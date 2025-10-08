@@ -4,19 +4,29 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 
-import vista.creditCard;
-
 public class Pedido {
     private int id;
     private ArrayList<Producto> productos;
     private LocalDateTime fechaDeCompra;
     private PaymentMethod metodoPago;
 
-    public Pedido(int id, creditCard metodoPago) {
+    // Constructor sin método de pago
+    public Pedido(int id) {
         this.id = id;
-        
         this.fechaDeCompra = LocalDateTime.now(); 
         this.productos = new ArrayList<>();
+    }
+
+    // Constructor con método de pago (opcional)
+    public Pedido(int id, PaymentMethod metodoPago) {
+        this.id = id;
+        this.fechaDeCompra = LocalDateTime.now(); 
+        this.productos = new ArrayList<>();
+        this.metodoPago = metodoPago;
+    }
+
+    public void setMetodoPago(PaymentMethod metodoPago) {
+        this.metodoPago = metodoPago;
     }
 
     public PaymentMethod getMetodoPago() {
@@ -48,7 +58,6 @@ public class Pedido {
     }
 
     public void showOrder() {
-        
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy HH:mm");
 
         System.out.println("\n===  Resumen del Pedido ===");
@@ -66,6 +75,10 @@ public class Pedido {
     }
 
     public void processOrder() {
+        if (metodoPago == null) {
+            System.out.println("Error: No se ha establecido un método de pago para el pedido.");
+            return;
+        }
         
         System.out.println("\nProcesando pedido ID: " + id + " con fecha " + fechaDeCompra.format(DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy HH:mm")));
         showOrder();

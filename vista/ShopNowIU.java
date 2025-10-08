@@ -13,6 +13,7 @@ import model.CargaDeProductos;
 import model.Cliente;
 import model.PaymentMethod;
 import model.Card;
+import model.bankTransfer;
 
 public class ShopNowIU extends JFrame {
 
@@ -22,11 +23,8 @@ public class ShopNowIU extends JFrame {
     private JLabel totalLabel;
     private JButton btnTerminarCompra;
     private Pedido pedido;
-    private Card metCard;
-    private digitalWallet metWallet;
     private List<Producto> products;
     private Cliente cliente;
-
 
     public ShopNowIU() {
         setTitle("Shopnow - Carrito de compras");
@@ -37,7 +35,8 @@ public class ShopNowIU extends JFrame {
 
         products = CargaDeProductos.CargaDeProducto("Catalogo.txt");
 
-        pedido = new Pedido(1, metCard);
+        // Inicializar pedido sin método de pago (se asignará después)
+        pedido = new Pedido(1);
 
         productoModel = new DefaultListModel<>();
         for (Producto producto : products) {
@@ -45,7 +44,6 @@ public class ShopNowIU extends JFrame {
                 producto.getId() + " - " +
                 producto.getNombre() + " -$ " +
                 producto.getPrecio()
-                
             );
         }
 
@@ -75,17 +73,7 @@ public class ShopNowIU extends JFrame {
         totalLabel = new JLabel("Total: $0.0");
 
         btnTerminarCompra = new JButton("Terminar compra");
-        btnTerminarCompra.addActionListener(e -> {
-             LocalDateTime ahora = LocalDateTime.now();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd 'de'  MMMM 'de' yyyy HH:mm:ss");
-        String fechaHora = ahora.format(formatter);
-        JOptionPane.showMessageDialog(
-            this,
-            "¡Gracias por su compra!\n" +
-            totalLabel.getText() +
-            "\nFecha y hora: " + fechaHora
-                 );
-    });
+        btnTerminarCompra.addActionListener(e -> terminarCompra());
 
         JPanel panelInferior = new JPanel(new BorderLayout());
         panelInferior.add(totalLabel, BorderLayout.CENTER);
@@ -108,6 +96,151 @@ public class ShopNowIU extends JFrame {
         }
         totalLabel.setText("Total: $" + total);
     }
+
+    private void terminarCompra() {
+        if (pedido.getProductos().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "El carrito está vacío. Agregue productos antes de finalizar la compra.");
+            return;
+        }
+
+        // Solicitar datos del cliente
+        String nombreCliente = JOptionPane.showInputDialog(this, "Ingrese su nombre:");
+        if (nombreCliente == null || nombreCliente.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "El nombre es obligatorio.");
+            return;
+        }
+
+        String emailCliente = JOptionPane.showInputDialog(this, "Ingrese su email:");
+        if (emailCliente == null || emailCliente.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "El email es obligatorio.");
+            return;
+        }
+
+        cliente = new Cliente(nombreCliente, emailCliente);
+
+        // Seleccionar método de pago
+        String[] opcionesPago = {"Tarjeta de Crédito", "Billetera Digital", "Transferencia Bancaria"};
+        String metodoSeleccionado = (String) JOptionPane.showInputDialog(
+            this,
+            "Seleccione método de pago:",
+            "Método de Pago",
+            JOptionPane.QUESTION_MESSAGE,
+            null,
+            opcionesPago,
+            opcionesPago[0]
+        );
+
+        if (metodoSeleccionado == null) {
+            JOptionPane.showMessageDialog(this, "Debe seleccionar un método de pago.");
+            return;
+        }
+
+        PaymentMethod metodoPago = null;
+        double total = pedido.calcularTotal();
+
+        try {
+            switch (metodoSeleccionado) {
+                case "Tarjeta de Crédito":
+                    metodoPago = crearMetodoTarjeta(nombreCliente, total);
+                    break;
+                case "Billetera Digital":
+                    metodoPago = crearMetodoBilletera(nombreCliente, total);
+                    break;
+                case "Transferencia Bancaria":
+                    metodoPago = crearMetodoTransferencia(nombreCliente, total);
+                    break;
+            }
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Error en los datos ingresados. Verifique los números.");
+            return;
+        }
+
+        if (metodoPago != null) {
+            pedido.setMetodoPago(metodoPago);
+            procesarPago();
+        }
+    }
+
+    private Card crearMetodoTarjeta(String nombreCliente, double total) {
+        String cvvStr = JOptionPane.showInputDialog(this, "Ingrese CVV (3 dígitos):");
+        if (cvvStr == null || cvvStr.length() != 3) {
+            throw new NumberFormatException("CVV inválido");
+        }
+        short cvv = Short.parseShort(cvvStr);
+
+        String numeroTarjeta = JOptionPane.showInputDialog(this, "Ingrese número de tarjeta (16 dígitos):");
+        if (numeroTarjeta == null || numeroTarjeta.length() != 16) {
+            throw new NumberFormatException("Número de tarjeta inválido");
+        }
+        int cardNumber = Integer.parseInt(numeroTarjeta);
+
+        String fechaExpiracion = JOptionPane.showInputDialog(this, "Ingrese fecha de expiración (YYYY-MM-DD):");
+        if (fechaExpiracion == null || fechaExpiracion.isEmpty()) {
+            throw new NumberFormatException("Fecha de expiración inválida");
+        }
+        java.sql.Date expirationDate = java.sql.Date.valueOf(fechaExpiracion);
+
+        return new Card(nombreCliente, total, cvv, cardNumber, expirationDate);
+    }
+
+    private digitalWallet crearMetodoBilletera(String nombreCliente, double total) {
+        String phoneNumber = JOptionPane.showInputDialog(this, "Ingrese número de teléfono:");
+        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
+            throw new NumberFormatException("Número de teléfono inválido");
+        }
+
+        String provider = JOptionPane.showInputDialog(this, "Ingrese proveedor (Ej: PayPal, Mercado Pago):");
+        if (provider == null || provider.trim().isEmpty()) {
+            throw new NumberFormatException("Proveedor inválido");
+        }
+
+        return new digitalWallet(nombreCliente, total, phoneNumber, provider);
+    }
+
+    private bankTransfer crearMetodoTransferencia(String nombreCliente, double total) {
+        String bankName = JOptionPane.showInputDialog(this, "Ingrese nombre del banco:");
+        if (bankName == null || bankName.trim().isEmpty()) {
+            throw new NumberFormatException("Nombre del banco inválido");
+        }
+
+        String accountNumberStr = JOptionPane.showInputDialog(this, "Ingrese número de cuenta:");
+        if (accountNumberStr == null || accountNumberStr.trim().isEmpty()) {
+            throw new NumberFormatException("Número de cuenta inválido");
+        }
+        int accountNumber = Integer.parseInt(accountNumberStr);
+
+        return new bankTransfer(nombreCliente, total, bankName, accountNumber);
+    }
+
+    private void procesarPago() {
+        LocalDateTime ahora = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy HH:mm:ss");
+        String fechaHora = ahora.format(formatter);
+
+        StringBuilder resumen = new StringBuilder();
+        resumen.append("¡Gracias por su compra!\n\n");
+        resumen.append("Cliente: ").append(cliente.getNombre()).append("\n");
+        resumen.append("Email: ").append(cliente.getEmail()).append("\n\n");
+        resumen.append("Productos comprados:\n");
+        
+        for (Producto p : pedido.getProductos()) {
+            resumen.append(" - ").append(p.getNombre()).append(" - $").append(p.getPrecio()).append("\n");
+        }
+        
+        resumen.append("\n").append(totalLabel.getText()).append("\n");
+        resumen.append("Fecha y hora: ").append(fechaHora).append("\n\n");
+        
+        // Procesar el pago
+        pedido.processOrder();
+
+        JOptionPane.showMessageDialog(this, resumen.toString());
+
+        // Limpiar carrito después de la compra
+        pedido = new Pedido(pedido.getId() + 1);
+        carArea.setText("");
+        actualizarTotal();
+    }
+
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             new ShopNowIU().setVisible(true);
